@@ -1,0 +1,10 @@
+data/raw/
+data/interim/
+data/processed/
+.ipynb_checkpoints/
+__pycache__/
+.venv/
+env/
+.DS_Store
+*.xls
+*.xlsx
