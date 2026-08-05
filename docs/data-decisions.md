@@ -9,6 +9,7 @@ Format: one entry per decision, newest at the bottom. Table above is an index.
 | D-002 | 2026-08-04 | Cross-validation grouped on subject, not visit | 0 |
 | D-003 | 2026-08-04 | T1 vs T2 comparisons are descriptive only | 0 |
 | D-004 | 2026-08-04 | Using the 2023-10-26 revision of the dataset | 0 |
+| D-005 | 2026-08-05 | Hypoglycemia label is chart/questionnaire-derived, not CGM-trace-derived | 0 |
 
 ---
 
@@ -60,3 +61,26 @@ measurements across two T2DM files (`2003_0_20210615`, `2029_0_20210526`).
 Published analyses using an earlier version may not reproduce exactly.
 
 **Impact.** Version stated in the README data section.
+
+---
+
+### D-005 — Hypoglycemia label is chart/questionnaire-derived, not CGM-trace-derived
+
+**Decision.** Treat `Hypoglycemia (yes/no)` as an independently-collected clinical
+characteristic, not a value computed from the CGM trace.
+
+**Rationale.** Per the dataset's data descriptor (Zhao et al. 2023), hypoglycemia
+occurrence was collected via questionnaire/medical-record review, alongside
+comorbidities and complications — separate from the CGM device. The paper's own
+TIR/TAR/TBR stats are author-computed outputs, not columns in Summary.xlsx. This
+rules out the label being a direct formula on the CGM columns used as features.
+Exact case definition and time window (this visit vs. history) are unstated, so
+CGM-derived features from the same recording period may still be concurrently
+associated with the label, even if not mathematically derived from it.
+
+**Alternative considered.** Drop CGM-derived features to guarantee no overlap.
+Rejected — it removes the strongest predictors for a risk it doesn't fully close.
+
+**Impact.** Phase 4 model is framed as visit-level *association*, not prospective
+prediction, in `findings.md`. `metric-changelog.md` flags features sharing a
+recording window with the label.
