@@ -91,10 +91,10 @@ def load_summary_file(paths):
     source_row = range(len(df))
     df = apply_rename(df, RENAME_SUMMARY, name=Path(paths).name)
     identities = [parse_identity(s) for s in df["subject"]]
-    subjects, visits, recording_dates = zip(*identities)
+    subjects, visits, recording_date = zip(*identities)
     df["subject"] = subjects
     df["visit"] = visits
-    df["recording_date"] = recording_dates
+    df["recording_date"] = pd.to_datetime(recording_date)
     df["source_row"] = source_row
     df["source_file"] = Path(paths).name
     front = ["subject", "visit", "recording_date"]
@@ -112,6 +112,7 @@ def parse_identity(id_string):
 def parse_filename(filename):
     return parse_identity(filename.stem)
 
+#write load cgm_file function: signature, provenance columns, and the filename parse.
 def load_cgm_file(paths):
     df = pd.read_excel(paths, na_values=["/"])
     source_row = range(len(df))
@@ -122,7 +123,7 @@ def load_cgm_file(paths):
     subject, visit, recording_date = parse_filename(Path(paths))
     df["subject"] = subject
     df["visit"] = visit
-    df["recording_date"] = recording_date
+    df["recording_date"] = pd.to_datetime(recording_date)
     front = ["subject", "visit", "recording_date", "date"]
     back = ["source_row", "source_file"]
     middle = [c for c in df.columns if c not in front and c not in back]
