@@ -6,6 +6,7 @@ pyarrow>=25.0
 pytest>=9.1.1
 matplotlib>=3.11
 scikit-learn>=1.9
+scipy>=1.18
 
 # Phase 4/5 — not yet installed/tested locally, so unpinned for now
 jupyter
