@@ -6,6 +6,7 @@ __pycache__/
 # Environments — rebuild with `pip install -r requirements.txt`, never stored
 .venv/
 .venv-air/
+env/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -29,3 +30,8 @@ MetaFlex_Skills_and_Deliverables_v2.pdf
 data/raw/
 data/interim/
 data/processed/
+
+# Belt-and-suspenders for "no hand-editing data in Excel, ever" -- no .xls/
+# .xlsx can be committed anywhere in the repo, not just in data/raw/.
+*.xls
+*.xlsx
