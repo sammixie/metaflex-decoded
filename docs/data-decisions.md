@@ -38,6 +38,11 @@ Format: one entry per decision, newest at the bottom. Table above is an index.
 | D-031 | 2026-08-13 | K-means features scaled with z-score (StandardScaler), not min-max | 3 |
 | D-032 | 2026-08-13 | K selected via silhouette score, not the elbow method | 3 |
 | D-034 | 2026-08-13 | k=3 chosen over silhouette-argmax k=2, which failed the physiological check | 3 |
+| D-035 | 2026-08-17 | Phase 4 model runs diabetes_type as an ablation (clinical-only vs. clinical+CGM+type), not a fixed include/exclude choice | 4 |
+| D-036 | 2026-08-17 | insulin_dose_sc parsed as a Phase 4 feature; insulin_dose_iv deferred | 4 |
+| D-037 | 2026-08-17 | GMI-HbA1c disagreement reported as proportional, not flat, bias | 3 |
+| D-038 | 2026-08-17 | insulin_dose_sc aggregated as dose/day (Total Daily Dose framing); injection count kept as a secondary feature | 4 |
+| D-039 | 2026-08-17 | Visits with no insulin_dose_sc entry get insulin_dose_per_day = 0, not NaN; 5 visits with no medication data at all flagged as a caveat | 4 |
 
 ---
 
@@ -1202,3 +1207,221 @@ hyperglycemia-leaning 40.2%, hypoglycemia-prone 2.7%, vs. 57.6%/39.2%/3.2%
 on the full 125-row set), and the cross-diagnosis mixing in the smallest
 cluster survived — the structure isn't an artifact of the 10 subjects
 contributing repeat visits.
+
+---
+
+### D-035 — Phase 4 model runs diabetes_type as an ablation (clinical-only vs. clinical+CGM+type), not a fixed include/exclude choice
+
+**Decision.** The hypoglycemia risk model (Phase 4) does not simply
+include or exclude `diabetes_type` as a feature. It is compared across
+(at least) two feature sets: clinical + CGM features without
+`diabetes_type`, and the same set with `diabetes_type` added.
+
+**Rationale.** `diabetes_type` is close to a direct proxy for the label
+in this cohort: T1DM is 14/16 visits (87.5%) hypoglycemia-positive,
+T2DM is 10/109 (9.2%) — confirmed directly from `table_b_clean`, same
+pattern L-008 flagged earlier from the raw summary sheets. A model
+given `diabetes_type` can likely score well by mostly re-deriving "is
+this patient T1DM" rather than learning the clinical/glucose drivers
+the guiding question actually asks about ("what clinical and glucose
+features predict hypoglycemia"). Excluding it outright would lose real
+information too — diabetes type is a legitimate clinical variable, not
+a data leak in the sense D-005 uses the term. Running both keeps the
+model honest about which result is which: what performance
+near-free diagnosis information buys, reported separately from what
+the harder within-type signal buys.
+
+**Alternative considered.** Include `diabetes_type` as an ordinary
+feature, no ablation. Rejected — SHAP would very likely surface it as
+the dominant driver, and the write-up would end up saying little about
+actual clinical risk factors. Also considered: exclude it entirely.
+Rejected — discards a genuine clinical predictor for the sake of a
+cleaner-looking model.
+
+**Impact.** `05_modeling.ipynb` fits and evaluates the model at least
+twice — once on clinical+CGM features without `diabetes_type`, once
+with it added — and reports both side by side rather than picking one
+silently.
+
+---
+
+### D-036 — insulin_dose_sc parsed as a Phase 4 feature; insulin_dose_iv deferred
+
+**Decision.** `insulin_dose_sc` (subcutaneous insulin injections, free
+text like `"Novolin R, 4 IU"`) is parsed into a per-visit numeric
+feature for Phase 4. `insulin_dose_iv` (IV insulin, free text like
+`"500ml 0.9% sodium chloride, 12 IU Novolin R, 10 ml 10% potassium
+chloride"`) is left out of the v1 model.
+
+**Rationale.** `insulin_dose_sc` covers 67 of 125 visits (54%) — the
+injection log for patients on multiple daily injections rather than a
+CSII pump — and insulin dose is one of the more directly mechanistic
+drivers of hypoglycemia available in this dataset, worth the parsing
+effort. `insulin_dose_iv` covers only 10 of 125 visits (8%) and reads
+as a fixed inpatient DKA-management infusion recipe (glucose/saline +
+potassium chloride + insulin) rather than routine dosing — lower
+expected value for a first modeling pass, and too rare for a model to
+learn much from regardless.
+
+Both columns log doses on the same CGM timeline the hypoglycemia label
+covers, which raises the same association-vs-prediction caveat D-005
+already flagged for CGM-derived features generally — sharing a
+recording window with the label means a feature can be concurrently
+associated without being genuinely predictive. This cuts sharper here
+than for routine glucose metrics: an insulin dose logged shortly
+before a recorded hypo event is close to circular. Mitigated, not
+solved, by aggregating `insulin_dose_sc` to a per-visit summary rather
+than reading-level detail — flagged for the Phase 4 write-up.
+
+**Alternative considered.** Parse and use both columns. Rejected for
+now — `insulin_dose_iv`'s coverage and acute-care framing make it
+lower priority; revisit as a second pass if the v1 model needs more
+signal. Also considered: defer both. Rejected — `insulin_dose_sc`'s
+coverage and clinical relevance are too central to a hypoglycemia
+model to skip in the first pass.
+
+**Impact.** Feature engineering (`src/features.py`, Phase 4) will parse
+`insulin_dose_sc` into drug name + IU dose, aggregated per
+subject-visit — exact aggregation (total daily dose vs. injection
+count vs. something else) not yet decided, to be resolved when
+`features.py` is drafted. `insulin_dose_iv` is left untouched, not
+used as a Phase 4 feature; no change to `clean.py`.
+
+---
+
+### D-037 — GMI-HbA1c disagreement reported as proportional, not flat, bias
+
+**Decision.** The §1 GMI vs. HbA1c agreement finding is characterized
+as a *proportional* bias — the gap between GMI and lab HbA1c widens as
+glucose level rises — not as a single flat average (-2.31%) applying
+uniformly across the range. The flat bias/LoA numbers from D-023/D-024
+(n=116, bias -2.31%, LoA -6.79 to +2.16%) are kept and still reported,
+but framed explicitly as a cohort average that masks range-dependent
+behavior, not as the headline claim standing alone.
+
+**Rationale.** Regressing the GMI-HbA1c difference against laboratory
+HbA1c gave slope -0.87, r=-0.96, p≈1.6×10⁻⁶³ (n=116) — strong and
+highly significant. Checked for mathematical coupling (the standard
+critique of Bland-Altman's mean-of-two x-axis) by rerunning against
+HbA1c alone instead of the pair mean; the pattern held and got
+stronger, ruling that out as the explanation. Checked whether it was
+outlier-driven: HbA1c > 8% is 67 of 116 patients (58%, not a rare
+tail); quintile-binned mean diff moves smoothly from -0.31 to -6.03
+points across the range with no single bin doing all the work; the
+slope survives (though weaker) even restricted to HbA1c ≤ 8% alone
+(slope -0.35, p=0.0019). Likely mechanism: GMI is a fixed linear
+transform of mean CGM glucose, and a linear transform of one variable
+can't spread out more than that variable does — GMI's std (0.73) is
+roughly a third of lab HbA1c's (2.51) across this cohort, so GMI is
+structurally compressed and can't represent the full range of
+glycemic control lab HbA1c can, especially at the severe end.
+
+**Alternative considered.** Report only the flat bias/LoA, as
+originally written. Rejected — it states an average as if it were the
+answer everywhere, when the disagreement demonstrably depends on where
+a patient sits in the range. Also considered: compute regression-based
+(non-constant-width) limits of agreement, the standard Bland-Altman
+extension for exactly this situation. Not pursued — bigger statistical
+machinery than this section needs; reporting the regression
+slope/r/p alongside the existing flat bias is honest about the pattern
+without it.
+
+**Impact.** `04_eda_profiles.ipynb` §1 gains two new code cells (the
+two `linregress` checks) and a rewritten interpretation cell. The hero
+figure (§5) is the same underlying scatter, so its write-up should
+carry the same caveat once §5 is drafted — not resolved by this entry.
+
+---
+
+### D-038 — insulin_dose_sc aggregated as dose/day (Total Daily Dose framing); injection count kept as a secondary feature
+
+**Decision.** `insulin_dose_sc` is aggregated to one primary per-visit
+feature: total parsed IU summed across the visit, divided by the
+visit's monitored duration in days — i.e. average daily insulin dose,
+the Total Daily Dose (TDD) concept from diabetes management.
+Injection count (how many `insulin_dose_sc` entries were logged in the
+visit) is kept as a second, secondary feature alongside it, not as a
+replacement.
+
+**Rationale.** TDD is the standard clinical framing for insulin
+regimen intensity and hypoglycemia risk — physicians size a regimen
+and judge whether it's aggressive relative to a patient's needs in
+these terms, and higher TDD (especially relative to body weight) is a
+recognized hypoglycemia risk marker in the literature. Raw total dose
+summed across the whole visit was rejected as the primary feature
+because it conflates *how much insulin* with *how long the visit
+happened to run* — a 5-day recording accumulates more total IU than a
+1-day one on an identical regimen, a visit-length artifact rather than
+a real difference in risk. Dividing by visit duration removes that
+artifact. Injection count alone was rejected as a standalone primary
+feature because it discards dose size entirely — 3 injections of 2 IU
+each and 3 injections of 20 IU each are different risk profiles that a
+count can't distinguish — but it isn't dropped outright, since dosing
+frequency (more injections, more chances for timing error or dose
+stacking) is a real, separate mechanism from dose size, not fully
+redundant with it.
+
+**Alternative considered.** Raw total dose per visit (no time
+normalization). Rejected for the visit-length confound above.
+Injection count as the sole feature. Rejected — loses the mechanistic
+link between dose size and hypoglycemia risk. Both considered as
+equally-weighted primary features with no secondary/primary
+distinction — not chosen, since dose/day is the one with the direct
+clinical-concept mapping (TDD) and should carry the interpretation
+weight.
+
+**Impact.** `src/features.py` will compute a per-subject-visit dose/day
+feature from `insulin_dose_sc` (drug name + IU, D-036) plus a separate
+injection-count feature. Two mechanics remain open, to be resolved
+when `features.py` is actually drafted, not decided here: how visit
+duration in days is computed (basis: first-to-last CGM timestamp for
+that subject-visit), and the free-text parsing problems already found
+in this column — typos (`insulin glarigine`), multi-drug single-cell
+entries (`insulin glargine, 14 IU, Humulin 70/30`), and rows that don't
+match the `"drug, N IU"` pattern at all (17 of 1,199 non-null rows,
+e.g. `'Humulin 70/30  8 IU'` with a missing comma).
+
+---
+
+### D-039 — Visits with no insulin_dose_sc entry get insulin_dose_per_day = 0, not NaN; 5 visits with no medication data at all flagged as a caveat
+
+**Decision.** For the 58 of 125 subject-visits with zero `insulin_dose_sc`
+entries in `table_a_clean`, `insulin_dose_per_day` (D-038) is set to `0`,
+not `NaN`. 5 of those 58 visits — the ones with no entry in *any*
+diabetes-medication column at all — are flagged as a documented caveat
+on this choice, not resolved differently.
+
+**Rationale.** Checked what the 58 "blank" visits actually have instead
+of just assuming missingness: 13 are on a CSII pump (`insulin_csii_bolus_r_iu`
+and/or `insulin_csii_basal_r_iu_h` populated — SC insulin genuinely
+doesn't apply, they're dosed a different way), and 49 have
+`non_insulin_hypoglycemic_agents` entries (managed on oral agents,
+genuinely no SC insulin). Together that accounts for 53 of the 58 (some
+overlap) — for these visits, a blank `insulin_dose_sc` is a real
+clinical fact (not on SC insulin), not a gap in recording, so `0` is
+the correct value, not "unknown." Only 5 of 125 visits (4%) have
+nothing recorded across `insulin_dose_sc`, CSII, `insulin_dose_iv`, or
+`non_insulin_hypoglycemic_agents` — for those, `0` could mean "genuinely
+on no diabetes medication" or "medication data simply wasn't captured
+for this visit," and there's no way to tell which from what's in the
+file. Small enough a slice (4%) not to let it dictate the design of the
+whole column — treated as a documented caveat rather than a reason to
+default the whole column to `NaN`, the same proportionality D-020 used
+for the subject 2035 insulin duplicate.
+
+**Alternative considered.** Default all 58 to `NaN`. Rejected — would
+mark 53 genuinely-zero visits as unknown, which is a worse
+misrepresentation than the actual gap (5 visits, 4%) the `NaN` framing
+was meant to protect against. Also considered: try to resolve the 5
+ambiguous visits individually (e.g. check `diabetic_macrovascular_complications`
+or other chart fields for a hint). Not pursued — no clear independent
+signal identified yet; left as an open, named caveat instead of an
+unsupported guess.
+
+**Impact.** `src/features.py`'s `build_insulin_features` fills
+`insulin_dose_per_day` and `insulin_injection_count` with `0` (not
+`NaN`) for subject-visits with no `insulin_dose_sc` entries. The 5
+ambiguous subject-visits (no entry in `insulin_dose_sc`, CSII, IV, or
+non-insulin agent columns) are noted in the feature-table docstring/
+write-up as a disclosed limitation on this column, not resolved
+further at this time.

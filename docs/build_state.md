@@ -137,6 +137,59 @@ schedule.
     re-verified via full re-execution.
   - `docs/data-decisions.md`: D-023 through D-034 logged (D-033 number not
     used — skipped, not a gap in the actual decisions).
+- **Phase 3 — fully closed (2026-08-17).** Both remaining write-up items
+  resolved: the Bland-Altman plot's proportional-bias pattern (visually
+  apparent since the figure was built, not yet checked or logged) was
+  quantified and logged as **D-037** — regressing GMI-HbA1c diff against
+  lab HbA1c gives slope -0.87, r=-0.96, p≈1.6×10⁻⁶³ (n=116); ruled out
+  mathematical coupling (pattern held against HbA1c alone, not just
+  mean-of-pair); ruled out an outlier-driven artifact (quintile-binned
+  diff moves smoothly -0.31 → -6.03 points across the range, and the
+  slope survives, weaker, even restricted to HbA1c ≤ 8%). Likely
+  mechanism: GMI's std (0.73) is roughly a third of lab HbA1c's (2.51) in
+  this cohort — a fixed linear formula on mean CGM glucose structurally
+  can't spread out as much as lab HbA1c's real range, so GMI compresses
+  toward the middle and understates severity worst for the most
+  poorly-controlled patients. §1's interpretation cell rewritten to lead
+  with this rather than the flat -2.31% bias alone. §5's interpretation
+  markdown (previously missing entirely) is written, carrying the same
+  caveat forward for the hero figure/README use.
+- **Git repository initialized** — `.git` exists, on `main`, connected to
+  `origin`, working tree clean, history includes Phases 1-3. The "not under
+  version control" blocker noted below in earlier versions of this file no
+  longer applies; when exactly this happened wasn't captured in this file at
+  the time, so treat the fact (repo exists, clean) as verified 2026-08-17,
+  not the timing.
+- **Phase 4 scoping decisions pre-logged (2026-08-17), ahead of any Phase 4
+  code.** `has_hypoglycemia` confirmed 101 no / 24 yes (19.2%) in
+  `table_b_clean`, split by `diabetes_type`: T1DM 14/16 visits (87.5%) yes,
+  T2DM 10/109 (9.2%) yes — matches L-008's earlier finding from the raw
+  summary sheets. Given how close `diabetes_type` sits to a direct proxy
+  for the label, **D-035** commits Phase 4 to running the model as an
+  ablation — clinical+CGM features with and without `diabetes_type` — rather
+  than a single fixed include/exclude choice. Separately, **D-036** resolves
+  the open `insulin_dose_sc`/`insulin_dose_iv` question: `insulin_dose_sc`
+  (67/125 visits, 54% coverage — SC injection log, `"drug, N IU"` free text)
+  will be parsed into a Phase 4 feature; `insulin_dose_iv` (10/125 visits,
+  8% — reads as a fixed inpatient DKA-management infusion template, not
+  routine dosing) is deferred out of the v1 model. Neither decision has
+  corresponding code yet — `src/features.py` doesn't exist yet — this is
+  scoping ahead of the build, not implementation.
+- **Session continued same day.** **D-038** resolves `insulin_dose_sc`'s
+  aggregation — dose/day (Total Daily Dose framing), with injection count
+  kept as a secondary feature; raw total-per-visit rejected for confounding
+  dose size with visit length. **D-039** resolves the zero-entry question —
+  visits with no `insulin_dose_sc` entry get `0`, not `NaN` (53 of the 58
+  have a clear alternative explanation — CSII pump or oral agents only —
+  leaving 5/125 (4%) genuinely ambiguous, flagged as a caveat rather than
+  driving the whole column to `NaN`). `src/features.py` now exists as an
+  empty file (created, not yet drafted). `05_modeling.ipynb` has its section
+  skeleton in place (11 markdown cells: framing → feature sets → split →
+  baseline → evaluation → tree ensemble → repeat on ablation set →
+  threshold → SHAP) — headers only, no code yet. `docs/daily-learninglog.md`:
+  L-056 through L-060 logged (association-vs-prediction framing, tree
+  models, probability-output meaning, TDD reasoning, the 0-vs-NaN
+  missingness check).
 
 **Not started:**
 
@@ -145,18 +198,17 @@ schedule.
   subject-2035 insulin duplicate were investigated and left as documented,
   unfixed findings (D-019, D-020), not systematically re-checked against every
   other column.
-- A decision on `insulin_dose_sc` / `insulin_dose_iv` as free text (kept
-  as-is, parsed, or dropped as a Phase 4 feature) — doesn't block Phase 1,
-  needed before either column is used as a model feature.
-- Section 5's interpretation markdown — figure is built, write-up isn't.
-- The Bland-Altman plot shows a *proportional* bias (disagreement widens at
-  higher glucose, not a flat -2.31% offset) — observed while building the
-  figure, not yet logged as a decision or discussed in §1's interpretation.
+- `src/features.py` — file exists, empty. D-036/D-038/D-039 have resolved
+  what it needs to do (parse `insulin_dose_sc`, aggregate to dose/day +
+  injection count, join to the clinical+CGM table); none of it is written
+  yet.
+- `05_modeling.ipynb` — section skeleton created (headers only): framing,
+  feature sets, split, baseline model, evaluation, tree ensemble, ablation
+  repeat, threshold selection, SHAP. No code in any cell yet.
 
-**Repo hygiene:** this directory is not a git repository — no `.git`. The plan's
-rule "commit working states only" has nothing to commit to locally.
-`notebooks/`, `src/`, `docs/`, and now `requirements.txt` all have real work
-in them and none of it is under version control.
+**Repo hygiene:** `.git` exists and is current (see Phase 3 closure note
+above) — this section previously said otherwise; that was stale, not
+re-verified at the time it was written.
 
 ---
 
@@ -284,26 +336,33 @@ entry where one exists.
 
 ## 4. Immediate next step
 
-Phase 3's analysis and figures are done; two small write-up items remain
-before it's fully closed (see Not started, in section 2) — both mine to
-review, hers to write: section 5's interpretation, and a decision on the
-proportional-bias pattern the Bland-Altman plot surfaced.
+Phase 3 is fully closed (see section 2). Phase 1 is also complete per the
+plan (cleaning, provenance, resample grid, cleaned tables, cohort/attrition
+numbers — all done and verified live); its remaining open items are
+deferred, not blocking (see Open items below): the full Table B unit audit,
+and (as of 2026-08-17) the `insulin_dose_sc`/`insulin_dose_iv` question,
+which is no longer undecided — D-036 resolved it, see section 2.
 
-Next real phase is **Phase 4 (hypoglycemia risk model)**: baseline logistic
-regression, then tree ensembles, grouped cross-validation (subject-level,
-per D-002 — repeat visits from the same patient never split across folds),
-evaluated on PR-AUC/precision/recall/confusion matrix, a threshold chosen in
-cost terms, SHAP for interpretation.
+Next real phase is **Phase 4 (hypoglycemia risk model)**. Scoping is ahead
+of code: D-002 (subject-grouped CV), D-035 (diabetes_type ablation), and
+D-036 (insulin_dose_sc parsed, insulin_dose_iv deferred) are all logged.
+What's actually next, in order:
 
-Immediate action before Phase 4 starts: this directory still isn't a git
-repository — nothing built so far is under version control (see Open items
-below).
+1. `src/features.py` — build the joined clinical+CGM modeling table
+   (`summarize_table_a` + `table_b_clean` on subject+visit, same join
+   `04_eda_profiles.ipynb` already does), encode `has_hypoglycemia` to
+   binary, parse `insulin_dose_sc` per D-036. Not in the ownership table's
+   explicit Phase 4 row, so default applies — hers to draft, mine to
+   review, same as `load.py`/`clean.py` were.
+2. `05_modeling.ipynb` — baseline logistic regression, then tree ensembles,
+   `GroupKFold` on subject (D-002), evaluated on PR-AUC/precision/recall/
+   confusion matrix, run twice per D-035's ablation. Threshold chosen in
+   cost terms; SHAP for interpretation — both explicitly hers per the
+   ownership table.
 
-Phase 1 is complete per the plan (cleaning, provenance, resample grid,
-cleaned tables, cohort/attrition numbers — all done and verified live).
-Remaining Phase 1 open items are deferred, not blocking (see Open items
-below): the full Table B unit audit, and the `insulin_dose_sc` /
-`insulin_dose_iv` free-text decision.
+No outstanding blocker before this starts — git is initialized (section 2),
+Phase 3 is closed, and the scoping decisions that were genuinely open
+(diabetes_type handling, insulin free-text columns) are now logged.
 
 ---
 
