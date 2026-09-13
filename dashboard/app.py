@@ -6,14 +6,17 @@ per CLAUDE.md's ownership table; every number shown is read live from
 or a decision that Phases 1-4 already made.
 
 Three tabs:
-  - Patient explorer: one subject-visit's CGM trace with TIR bands, plus
-    that visit's metric cards and clinical context.
+  - Patient explorer: one subject-visit's CGM trace with TIR bands and
+    excursion markers, a TIR/TAR/TBR composition bar, a glucose
+    distribution histogram, plus that visit's metric cards and clinical
+    context.
   - Cohort view: distribution of the pre-specified metrics across all
     125 subject-visits, T1DM vs T2DM, and the Phase 3 hero figure.
   - Risk view: placeholder. Phase 4 (the hypoglycemia model) hasn't been
     built yet — this tab says so rather than faking a result.
 """
 
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -26,6 +29,8 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+from metrics import qualifying_swings  # noqa: E402 — reuses the tested turning-point logic (Phase 2), not a reimplementation
 DATA_INTERIM = REPO_ROOT / "data" / "interim"
 DATA_PROCESSED = REPO_ROOT / "data" / "processed"
 FIGURES = REPO_ROOT / "reports" / "figures"
@@ -60,6 +65,22 @@ DATA_MISSING = not (
 )
 
 st.set_page_config(page_title="MetaFlex Decoded", layout="wide")
+
+# Streamlit's default st.metric font is sized for 3-4 cards per row.
+# Cramming 5-6 into one row (as the patient explorer needs) clips or wraps
+# on the deployed container width, so shrink it slightly instead of relying
+# on column count alone.
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetricValue"] { font-size: 1.4rem; }
+    [data-testid="stMetricLabel"] { font-size: 0.8rem; }
+    [data-testid="stMetricDelta"] { font-size: 0.8rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("MetaFlex Decoded")
 st.caption(
     "Shanghai T1DM/T2DM CGM cohort — audited pipeline, versioned metric "
@@ -111,27 +132,29 @@ with tab_patient:
         st.warning("No clinical summary row for this subject-visit.")
     else:
         c = row_clinical.iloc[0]
-        info_cols = st.columns(5)
-        info_cols[0].metric("Diabetes type", c["diabetes_type"])
-        info_cols[1].metric("Age", f"{c['age_years']:.0f}" if pd.notna(c["age_years"]) else "—")
-        info_cols[2].metric("BMI", f"{c['bmi_kg_m2']:.1f}" if pd.notna(c["bmi_kg_m2"]) else "—")
         hba1c_pct = (
             hba1c_ifcc_to_ngsp(c["hba1c_mmol_mol"]) if pd.notna(c["hba1c_mmol_mol"]) else None
         )
-        info_cols[3].metric("Lab HbA1c", f"{hba1c_pct:.1f}%" if hba1c_pct else "not recorded")
-        info_cols[4].metric("Hypoglycemia (chart)", c["has_hypoglycemia"])
+        info_row1 = st.columns(3)
+        info_row1[0].metric("Diabetes type", c["diabetes_type"])
+        info_row1[1].metric("Age", f"{c['age_years']:.0f}" if pd.notna(c["age_years"]) else "—")
+        info_row1[2].metric("BMI", f"{c['bmi_kg_m2']:.1f}" if pd.notna(c["bmi_kg_m2"]) else "—")
+        info_row2 = st.columns(3)
+        info_row2[0].metric("Lab HbA1c", f"{hba1c_pct:.1f}%" if hba1c_pct else "not recorded")
+        info_row2[1].metric("Hypoglycemia", c["has_hypoglycemia"])
 
     if row_metrics.empty:
         st.warning("No metrics row for this subject-visit.")
     else:
         m = row_metrics.iloc[0]
-        metric_cols = st.columns(6)
-        metric_cols[0].metric("Mean glucose", f"{m['mean']:.0f} mg/dL")
-        metric_cols[1].metric("CV%", f"{m['cv']:.1f}%", "unstable" if m["cv instability"] else "stable")
-        metric_cols[2].metric("TIR", f"{m['tir']:.1f}%")
-        metric_cols[3].metric("TAR / TBR", f"{m['tar']:.1f}% / {m['tbr']:.1f}%")
-        metric_cols[4].metric("GMI", f"{m['gmi']:.1f}%")
-        metric_cols[5].metric("MAGE", f"{m['mage']:.0f} mg/dL", f"{int(m['excursion'])} excursions")
+        metric_row1 = st.columns(3)
+        metric_row1[0].metric("Mean glucose", f"{m['mean']:.0f} mg/dL")
+        metric_row1[1].metric("CV%", f"{m['cv']:.1f}%", "unstable" if m["cv instability"] else "stable")
+        metric_row1[2].metric("TIR", f"{m['tir']:.1f}%")
+        metric_row2 = st.columns(3)
+        metric_row2[0].metric("TAR / TBR", f"{m['tar']:.1f}% / {m['tbr']:.1f}%")
+        metric_row2[1].metric("GMI", f"{m['gmi']:.1f}%")
+        metric_row2[2].metric("MAGE", f"{m['mage']:.0f} mg/dL", f"{int(m['excursion'])} excursions")
 
     if trace.empty:
         st.warning("No CGM readings found for this selection.")
@@ -164,16 +187,83 @@ with tab_patient:
                     marker=dict(color="orange", symbol="line-ns", size=8),
                 )
             )
+
+        # Excursion markers — the exact turning points qualifying_swings()
+        # (src/metrics.py, tested Phase 2 logic) counted as a real swing
+        # for this visit's MAGE/excursion_count. Not a new calculation:
+        # calling the same tested function, only plotting its output.
+        swings = qualifying_swings(trace)
+        if not swings.empty:
+            swing_points = trace.loc[swings.index]
+            fig.add_trace(
+                go.Scatter(
+                    x=swing_points["timestamp"], y=swing_points["cgm_mg_dl"],
+                    mode="markers", name="qualifying excursion",
+                    marker=dict(color="#9467bd", symbol="diamond", size=8),
+                    text=[f"swing: {v:+.0f} mg/dL" for v in swings],
+                    hovertemplate="%{x}<br>%{y:.0f} mg/dL<br>%{text}<extra></extra>",
+                )
+            )
+
         fig.update_layout(
             height=420, margin=dict(l=10, r=10, t=40, b=10),
             xaxis_title="Time", yaxis_title="Glucose (mg/dL)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(
+        gap_caption = (
             "Gaps are flagged, never imputed — a broken line is a real "
             "missing reading, not a rendering issue."
         )
+        if not row_metrics.empty:
+            gap_caption += (
+                f" Diamonds mark the {len(swings)} turning-point swings "
+                f"this visit's MAGE ({m['mage']:.0f} mg/dL average) and "
+                "excursion count are computed from."
+            )
+        st.caption(gap_caption)
+
+    if trace.empty or row_metrics.empty:
+        pass
+    else:
+        composition_col, hist_col = st.columns(2)
+
+        with composition_col:
+            st.markdown("###### Time in range composition")
+            tir_fig = go.Figure()
+            tir_fig.add_trace(go.Bar(
+                y=["visit"], x=[m["tbr"]], name="TBR (<70)", orientation="h",
+                marker_color="#d62728", text=f"{m['tbr']:.1f}%", textposition="inside",
+            ))
+            tir_fig.add_trace(go.Bar(
+                y=["visit"], x=[m["tir"]], name="TIR (70-180)", orientation="h",
+                marker_color="#2ca02c", text=f"{m['tir']:.1f}%", textposition="inside",
+            ))
+            tir_fig.add_trace(go.Bar(
+                y=["visit"], x=[m["tar"]], name="TAR (>180)", orientation="h",
+                marker_color="#ff7f0e", text=f"{m['tar']:.1f}%", textposition="inside",
+            ))
+            tir_fig.update_layout(
+                barmode="stack", height=180, showlegend=True,
+                margin=dict(l=10, r=10, t=10, b=10),
+                xaxis_title="% of readings", yaxis=dict(visible=False),
+                legend=dict(orientation="h", yanchor="bottom", y=-0.5),
+            )
+            st.plotly_chart(tir_fig, use_container_width=True)
+
+        with hist_col:
+            st.markdown("###### Glucose distribution, this visit")
+            hist_fig = px.histogram(
+                plot_df.dropna(subset=["cgm_mg_dl"]), x="cgm_mg_dl", nbins=40,
+            )
+            hist_fig.add_vline(x=TIR_LOW, line_dash="dash", line_color="gray")
+            hist_fig.add_vline(x=TIR_HIGH, line_dash="dash", line_color="gray")
+            hist_fig.update_layout(
+                height=180, margin=dict(l=10, r=10, t=10, b=10),
+                xaxis_title="Glucose (mg/dL)", yaxis_title="Readings",
+                showlegend=False,
+            )
+            st.plotly_chart(hist_fig, use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Cohort view
