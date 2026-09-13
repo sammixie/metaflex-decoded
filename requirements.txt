@@ -8,9 +8,11 @@ matplotlib>=3.11
 scikit-learn>=1.9
 scipy>=1.18
 
-# Phase 4/5 — not yet installed/tested locally, so unpinned for now
+# Phase 5 — installed and confirmed working (dashboard smoke-tested 2026-09-13)
+plotly>=7.0
+streamlit>=1.63
+
+# Phase 4 — not yet installed/tested locally, so unpinned for now
 jupyter
-plotly
 xgboost
 shap
-streamlit
