@@ -6,7 +6,7 @@
 
 MetaFlex Decoded turns raw continuous-glucose-monitor recordings from a 100+ patient diabetes cohort into the clinical endpoints an evidence package actually reports — Time in Range, glycemic variability, GMI — with every metric definition versioned, unit-tested, and traceable back to the raw reading.
 
-🔗 **Live dashboard:** `[[ PLACEHOLDER — Streamlit URL, Phase 5 ]]`
+🔗 **Live dashboard:** [metaflex-decoded.streamlit.app](https://metaflex-decoded.streamlit.app/)
 📊 **Findings report:** `[[ PLACEHOLDER — reports/findings.md, Phase 6 ]]`
 🧪 **Test suite:** `pytest tests/` — `[[ PLACEHOLDER — n tests on metrics.py, Phase 2 ]]`
 
