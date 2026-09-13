@@ -243,7 +243,7 @@ with tab_patient:
         tir_fig.update_layout(
             barmode="stack", height=150, showlegend=True,
             margin=dict(l=10, r=10, t=10, b=10),
-            xaxis_title="% of readings", yaxis=dict(visible=False),
+            xaxis=dict(visible=False), yaxis=dict(visible=False),
             legend=dict(orientation="h", yanchor="bottom", y=-0.6),
         )
         st.plotly_chart(tir_fig, use_container_width=True)
