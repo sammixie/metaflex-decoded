@@ -248,7 +248,7 @@ with tab_patient:
             x=plot_df["cgm_mg_dl"].dropna(),
             xbins=dict(size=10),
             histnorm="percent",
-            marker_color="#02319e",
+            marker_color="#007acc",
         ))
         hist_fig.add_vline(x=TIR_LOW, line_dash="dash", line_color="gray")
         hist_fig.add_vline(x=TIR_HIGH, line_dash="dash", line_color="gray")
