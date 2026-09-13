@@ -199,7 +199,7 @@ with tab_patient:
                 go.Scatter(
                     x=swing_points["timestamp"], y=swing_points["cgm_mg_dl"],
                     mode="markers", name="qualifying excursion",
-                    marker=dict(color="#9467bd", symbol="diamond", size=8),
+                    marker=dict(color="#fac934", symbol="diamond", size=8),
                     text=[f"swing: {v:+.0f} mg/dL" for v in swings],
                     hovertemplate="%{x}<br>%{y:.0f} mg/dL<br>%{text}<extra></extra>",
                 )
@@ -226,44 +226,48 @@ with tab_patient:
     if trace.empty or row_metrics.empty:
         pass
     else:
-        composition_col, hist_col = st.columns(2)
+        st.markdown("###### Time in range composition")
+        tir_fig = go.Figure()
+        tir_fig.add_trace(go.Bar(
+            y=["visit"], x=[m["tbr"]], name="TBR (<70)", orientation="h",
+            marker_color="#d62728", text=f"{m['tbr']:.1f}%", textposition="inside",
+        ))
+        tir_fig.add_trace(go.Bar(
+            y=["visit"], x=[m["tir"]], name="TIR (70-180)", orientation="h",
+            marker_color="#2ca02c", text=f"{m['tir']:.1f}%", textposition="inside",
+        ))
+        tir_fig.add_trace(go.Bar(
+            y=["visit"], x=[m["tar"]], name="TAR (>180)", orientation="h",
+            marker_color="#ff7f0e", text=f"{m['tar']:.1f}%", textposition="inside",
+        ))
+        tir_fig.update_layout(
+            barmode="stack", height=150, showlegend=True,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="% of readings", yaxis=dict(visible=False),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.6),
+        )
+        st.plotly_chart(tir_fig, use_container_width=True)
 
-        with composition_col:
-            st.markdown("###### Time in range composition")
-            tir_fig = go.Figure()
-            tir_fig.add_trace(go.Bar(
-                y=["visit"], x=[m["tbr"]], name="TBR (<70)", orientation="h",
-                marker_color="#d62728", text=f"{m['tbr']:.1f}%", textposition="inside",
-            ))
-            tir_fig.add_trace(go.Bar(
-                y=["visit"], x=[m["tir"]], name="TIR (70-180)", orientation="h",
-                marker_color="#2ca02c", text=f"{m['tir']:.1f}%", textposition="inside",
-            ))
-            tir_fig.add_trace(go.Bar(
-                y=["visit"], x=[m["tar"]], name="TAR (>180)", orientation="h",
-                marker_color="#ff7f0e", text=f"{m['tar']:.1f}%", textposition="inside",
-            ))
-            tir_fig.update_layout(
-                barmode="stack", height=180, showlegend=True,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis_title="% of readings", yaxis=dict(visible=False),
-                legend=dict(orientation="h", yanchor="bottom", y=-0.5),
-            )
-            st.plotly_chart(tir_fig, use_container_width=True)
-
-        with hist_col:
-            st.markdown("###### Glucose distribution, this visit")
-            hist_fig = px.histogram(
-                plot_df.dropna(subset=["cgm_mg_dl"]), x="cgm_mg_dl", nbins=40,
-            )
-            hist_fig.add_vline(x=TIR_LOW, line_dash="dash", line_color="gray")
-            hist_fig.add_vline(x=TIR_HIGH, line_dash="dash", line_color="gray")
-            hist_fig.update_layout(
-                height=180, margin=dict(l=10, r=10, t=10, b=10),
-                xaxis_title="Glucose (mg/dL)", yaxis_title="Readings",
-                showlegend=False,
-            )
-            st.plotly_chart(hist_fig, use_container_width=True)
+        st.markdown("###### Glucose distribution, this visit")
+        # Fixed 10 mg/dL bin width (not a fixed bin *count*) so bars stay a
+        # consistent, comparable size regardless of how many readings this
+        # visit has — a 247-row visit and a several-thousand-row one both
+        # get meaningful bars instead of one looking jagged.
+        hist_fig = go.Figure()
+        hist_fig.add_trace(go.Histogram(
+            x=plot_df["cgm_mg_dl"].dropna(),
+            xbins=dict(size=10),
+            histnorm="percent",
+            marker_color="#02319e",
+        ))
+        hist_fig.add_vline(x=TIR_LOW, line_dash="dash", line_color="gray")
+        hist_fig.add_vline(x=TIR_HIGH, line_dash="dash", line_color="gray")
+        hist_fig.update_layout(
+            height=320, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Glucose (mg/dL)", yaxis_title="% of readings",
+            showlegend=False,
+        )
+        st.plotly_chart(hist_fig, use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Cohort view
