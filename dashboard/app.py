@@ -165,6 +165,7 @@ with tab_patient:
         plot_df = trace.copy()
         plot_df.loc[plot_df["cgm_gap"], "cgm_mg_dl"] = None
 
+        st.markdown("###### Glucose trace, this visit")
         fig = go.Figure()
         fig.add_hrect(
             y0=TIR_LOW, y1=TIR_HIGH,
@@ -211,17 +212,6 @@ with tab_patient:
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
         st.plotly_chart(fig, use_container_width=True)
-        gap_caption = (
-            "Gaps are flagged, never imputed — a broken line is a real "
-            "missing reading, not a rendering issue."
-        )
-        if not row_metrics.empty:
-            gap_caption += (
-                f" Diamonds mark the {len(swings)} turning-point swings "
-                f"this visit's MAGE ({m['mage']:.0f} mg/dL average) and "
-                "excursion count are computed from."
-            )
-        st.caption(gap_caption)
 
     if trace.empty or row_metrics.empty:
         pass
